@@ -2,7 +2,7 @@ package grpcwrp
 
 import (
 	"context"
-	"math/rand"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/resolver"
@@ -14,7 +14,8 @@ const defaultPoolSize = 6
 
 // ConnPool keeps pool of GRPC connections
 type ConnPool struct {
-	p []*grpc.ClientConn
+	next uint32
+	p    []*grpc.ClientConn
 }
 
 // Dial is predefined version of usual GRPC dial
@@ -57,7 +58,11 @@ func (cp *ConnPool) ConnInterceptor(ctx context.Context, method string, req, rep
 }
 
 func (cp *ConnPool) get() *grpc.ClientConn {
-	return cp.p[rand.Intn(len(cp.p))]
+	// Take the next client in the pool.
+	// uint32 overflow resets to 0.
+	idx := atomic.AddUint32(&cp.next, 1) % uint32(len(cp.p))
+
+	return cp.p[idx]
 }
 
 func newPool(target string, opts ...grpc.DialOption) (*ConnPool, error) {
